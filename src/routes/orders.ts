@@ -1,15 +1,16 @@
 import { Router } from "express";
 import { processOrder, trades, orderBook} from "../services/matchingEngine";
+import { prisma } from "../db";
 const router = Router(); //mini server, (anything that starts with /api/orders, go ask this router what to do)
 
 type Order = {
-    id: string
+    id: string;
     type: "buy" | "sell";
     price: number;
     quantity: number;
 };
 
-router.post("/", (req,res) => {
+router.post("/", async (req,res) => {
     const {type, price, quantity} = req.body;
 
     //basic validation
@@ -19,11 +20,24 @@ router.post("/", (req,res) => {
 
     //create order - new order object
     const order: Order = {
-        id: Math.random().toString(36).substring(2,9),
+        id: Math.random().toString(36).substring(2, 9),
         type,
-        price,
-        quantity,
-    };
+        price: Number(price),
+        quantity: Number(quantity),
+      };
+
+      if (Number.isNaN(order.price) || Number.isNaN(order.quantity)) {
+        return res.status(400).json({ error: "Price and quantity must be numbers" });
+      }
+    
+    await prisma.order.create({
+        data: {
+          id: order.id,
+          type: order.type,
+          price: order.price,
+          quantity: order.quantity,
+        },
+      });
 
     const result = processOrder(order);
 
@@ -44,7 +58,7 @@ router.post("/", (req,res) => {
 
 
     //CANCEL ORDER by ID
-    router.delete("/:id", (req, res) => {
+    router.delete("/:id", async (req, res) => {
         const {id} = req.params;
 
         const buyIndex = orderBook.buy.findIndex((o) => o.id === id);
@@ -62,7 +76,7 @@ router.post("/", (req,res) => {
             console.log(` Canceled SELL order ${id}`);
         }
 
-        return res.json({ succes: true, message: "Order canceled", id});
+        return res.json({ success: true, message: "Order canceled", id});
     });
 
 export default router;
