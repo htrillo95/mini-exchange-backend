@@ -1,0 +1,25 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Order {
+  id        String   @id @default(cuid())
+  type      String
+  price     Float
+  quantity  Int
+  createdAt DateTime @default(now())
+}
+
+model Trade {
+  id          String   @id @default(cuid())
+  buyOrderId  String
+  sellOrderId String
+  price       Float
+  quantity    Int
+  createdAt   DateTime @default(now())
+}
