@@ -56,6 +56,13 @@ router.post("/", async (req,res) => {
         res.json(orderBook);
     });
 
+    router.get("/db", async (_req, res) => {
+        const orders = await prisma.order.findMany({
+          orderBy: { createdAt: "desc" },
+        });
+      
+        res.json(orders);
+      });
 
     //CANCEL ORDER by ID
     router.delete("/:id", async (req, res) => {
