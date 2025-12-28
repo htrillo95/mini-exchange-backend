@@ -12,6 +12,7 @@ model Order {
   type      String
   price     Float
   quantity  Int
+  status    String   @default("OPEN") // OPEN | PARTIAL | FILLED | CANCELED
   createdAt DateTime @default(now())
 }
 
