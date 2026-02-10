@@ -161,10 +161,20 @@ router.get("/trades", (_req, res) => {
   res.json(trades);
 });
 
-// DB trades
-router.get("/trades/db", async (_req, res) => {
+// DB trades (history, with optional ?limit)
+router.get("/trades/db", async (req, res) => {
+  const limitParam = req.query.limit;
+  let limit = 50;
+  if (typeof limitParam === "string") {
+    const parsed = Number(limitParam);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      limit = Math.min(parsed, 200);
+    }
+  }
+
   const dbTrades = await prisma.trade.findMany({
     orderBy: { createdAt: "desc" },
+    take: limit,
   });
   res.json(dbTrades);
 });
@@ -179,6 +189,48 @@ router.get("/db", async (_req, res) => {
   const orders = await prisma.order.findMany({
     orderBy: { createdAt: "desc" },
   });
+  res.json(orders);
+});
+
+// OPEN/PARTIAL active orders from DB (optional ?limit, default 50, max 200)
+router.get("/open", async (req, res) => {
+  const limitParam = req.query.limit;
+  let limit = 50;
+  if (typeof limitParam === "string") {
+    const parsed = Number(limitParam);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      limit = Math.min(parsed, 200);
+    }
+  }
+
+  const orders = await prisma.order.findMany({
+    where: {
+      status: { in: ["OPEN", "PARTIAL"] },
+      quantity: { gt: 0 },
+    },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+  });
+
+  res.json(orders);
+});
+
+// Order history from DB (optional ?limit, default 50, max 200)
+router.get("/history", async (req, res) => {
+  const limitParam = req.query.limit;
+  let limit = 50;
+  if (typeof limitParam === "string") {
+    const parsed = Number(limitParam);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      limit = Math.min(parsed, 200);
+    }
+  }
+
+  const orders = await prisma.order.findMany({
+    orderBy: { createdAt: "desc" },
+    take: limit,
+  });
+
   res.json(orders);
 });
 
