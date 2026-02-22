@@ -5,7 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
   "dev": "tsx src/server.ts",
-  "build": "prisma generate && prisma migrate deploy && tsc",
+  "build": "prisma generate && prisma migrate deploy && node ./node_modules/typescript/bin/tsc",
   "start": "node dist/server.js"
   },
   "keywords": [],
