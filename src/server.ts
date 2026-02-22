@@ -48,13 +48,13 @@ app.use(express.json());
 app.use("/api/orders", orderRoutes);
 
 // Create HTTP server (WebSocket-ready)
-const PORT = process.env.PORT || 4000;
+const PORT = Number(process.env.PORT) || 4000;
 const server = http.createServer(app);
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📦 Environment: ${NODE_ENV}`);
-  console.log(`🌐 Allowed CORS origins: ${allowedOrigins.join(", ")}`);
+  console.log(` Server running on port ${PORT}`);
+  console.log(` Environment: ${NODE_ENV}`);
+  console.log(` Allowed CORS origins: ${allowedOrigins.join(", ")}`);
 });
 
 export { server };
