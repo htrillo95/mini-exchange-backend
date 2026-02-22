@@ -4,9 +4,9 @@
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
-  "dev": "tsx src/server.ts",
-  "build": "prisma generate && prisma migrate deploy && node ./node_modules/typescript/bin/tsc",
-  "start": "node dist/server.js"
+    "dev": "tsx src/server.ts",
+    "build": "prisma generate && prisma migrate deploy && node ./node_modules/typescript/bin/tsc -p tsconfig.json",
+    "start": "node dist/server.js"
   },
   "keywords": [],
   "author": "",

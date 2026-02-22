@@ -234,6 +234,41 @@ router.get("/history", async (req, res) => {
   res.json(orders);
 });
 
+// Fetch orders by ID list
+router.get("/by-ids", async (req, res) => {
+  try {
+    const idsParam = req.query.ids;
+
+    // Return empty array if no ids provided
+    if (!idsParam || typeof idsParam !== "string") {
+      return res.json([]);
+    }
+
+    // Parse comma-separated IDs
+    const ids = idsParam
+      .split(",")
+      .map((id) => id.trim())
+      .filter((id) => id.length > 0);
+
+    // Return empty array if no valid IDs after parsing
+    if (ids.length === 0) {
+      return res.json([]);
+    }
+
+    const orders = await prisma.order.findMany({
+      where: {
+        id: { in: ids },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return res.json(orders);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
 // Cancel order by ID
 router.delete("/:id", async (req, res) => {
   return withLock(async () => {
