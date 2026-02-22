@@ -8,12 +8,13 @@ datasource db {
 }
 
 model Order {
-  id        String   @id @default(cuid())
-  type      String
-  price     Float
-  quantity  Int
-  status    String   @default("OPEN") // OPEN | PARTIAL | FILLED | CANCELED
-  createdAt DateTime @default(now())
+  id               String   @id @default(cuid())
+  type             String
+  price            Float
+  quantity         Int       // remaining/leaves quantity
+  originalQuantity Int?      // original order quantity (nullable for migration safety)
+  status           String    @default("OPEN") // OPEN | PARTIAL | FILLED | CANCELED
+  createdAt        DateTime  @default(now())
 }
 
 model Trade {

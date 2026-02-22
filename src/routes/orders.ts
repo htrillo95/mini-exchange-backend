@@ -93,6 +93,7 @@ router.post("/", async (req, res) => {
             id: order.id,
             type: order.type,
             price: order.price,
+            originalQuantity: originalQty,
             quantity: finalQty,
             status,
           },
@@ -140,7 +141,7 @@ router.post("/", async (req, res) => {
       // IMPORTANT: respond with ONLY the new trades (not the whole global list)
       return res.json({
         success: true,
-        order: { ...order, quantity: finalQty, status },
+        order: { ...order, originalQuantity: originalQty, quantity: finalQty, status },
         orderBook: result.orderBook,
         trades: newTrades,
       });
