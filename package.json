@@ -2,10 +2,11 @@
   "name": "mini-exchange",
   "version": "1.0.0",
   "type": "module",
-  "main": "index.js",
+  "main": "dist/server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "tsx src/server.ts"
+  "dev": "tsx src/server.ts",
+  "build": "prisma generate && prisma migrate deploy && tsc",
+  "start": "node dist/server.js"
   },
   "keywords": [],
   "author": "",
