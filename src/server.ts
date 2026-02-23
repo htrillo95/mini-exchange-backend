@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import http from "http";
 import orderRoutes from "./routes/orders.js";
+import authRoutes from "./routes/auth";
 
 dotenv.config();
 const app = express();
@@ -46,6 +47,8 @@ app.use(
 app.use(express.json());
 
 app.use("/api/orders", orderRoutes);
+
+app.use("/auth", authRoutes);
 
 // Create HTTP server (WebSocket-ready)
 const PORT = Number(process.env.PORT) || 4000;
