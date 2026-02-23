@@ -5,6 +5,7 @@ import {
   comparePassword,
   signToken,
 } from "../utils/auth";
+import { requireAuth, AuthRequest } from "../middleware/authMiddleware";
 
 const router = Router();
 
@@ -61,4 +62,8 @@ router.post("/login", async (req, res) => {
   res.json({ token, user: { id: user.id, email: user.email } });
 });
 
+router.get("/me", requireAuth, (req: AuthRequest, res) => {
+    return res.json({ user: req.user });
+  });
+  
 export default router;

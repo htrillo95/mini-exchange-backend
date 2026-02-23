@@ -35,7 +35,7 @@ const withLock = async <T>(fn: () => Promise<T>): Promise<T> => {
   return run;
 };
 
-router.post("/", async (req: AuthRequest, res) => {
+router.post("/demo", async (req, res) => {
   return withLock(async () => {
     try {
       const { type, price, quantity } = req.body;
@@ -81,7 +81,98 @@ router.post("/", async (req: AuthRequest, res) => {
             originalQuantity: originalQty,
             quantity: finalQty,
             status,
-            userId: req.user?.userId ?? null,
+            userId: null,
+          },
+        });
+
+        for (const t of newTrades) {
+          await tx.trade.create({
+            data: {
+              buyOrderId: t.buyOrderId,
+              sellOrderId: t.sellOrderId,
+              price: t.price,
+              quantity: t.quantity,
+            },
+          });
+
+          const buyRemaining = findRemainingQtyInBook(t.buyOrderId);
+          const sellRemaining = findRemainingQtyInBook(t.sellOrderId);
+
+          const matchedStatus = (remaining: number): OrderStatus =>
+            remaining === 0 ? "FILLED" : "PARTIAL";
+
+          await tx.order.updateMany({
+            where: { id: t.buyOrderId },
+            data: { quantity: buyRemaining, status: matchedStatus(buyRemaining) },
+          });
+
+          await tx.order.updateMany({
+            where: { id: t.sellOrderId },
+            data: { quantity: sellRemaining, status: matchedStatus(sellRemaining) },
+          });
+        }
+      });
+
+      return res.json({
+        success: true,
+        order: { ...order, originalQuantity: originalQty, quantity: finalQty, status },
+        orderBook: result.orderBook,
+        trades: newTrades,
+      });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ error: "Server error" });
+    }
+  });
+});
+
+router.post("/", requireAuth, async (req: AuthRequest, res) => {
+  return withLock(async () => {
+    try {
+      const { type, price, quantity } = req.body;
+
+      if (!type || price == null || quantity == null) {
+        return res.status(400).json({ error: "Missing fields" });
+      }
+      if (type !== "buy" && type !== "sell") {
+        return res.status(400).json({ error: "type must be 'buy' or 'sell'" });
+      }
+
+      const order: Order = {
+        id: Math.random().toString(36).substring(2, 9),
+        type,
+        price: Number(price),
+        quantity: Number(quantity),
+      };
+
+      if (Number.isNaN(order.price) || Number.isNaN(order.quantity)) {
+        return res.status(400).json({ error: "Price and quantity must be numbers" });
+      }
+      if (!Number.isInteger(order.quantity) || order.quantity <= 0 || order.price <= 0) {
+        return res.status(400).json({
+          error: "Price must be > 0 and quantity must be a positive integer",
+        });
+      }
+
+      const originalQty = order.quantity;
+      const tradesBefore = trades.length;
+
+      const result = processOrder(order);
+      const newTrades = trades.slice(tradesBefore);
+
+      const finalQty = order.quantity;
+      const status = computeStatus(originalQty, finalQty);
+
+      await prisma.$transaction(async (tx) => {
+        await tx.order.create({
+          data: {
+            id: order.id,
+            type: order.type,
+            price: order.price,
+            originalQuantity: originalQty,
+            quantity: finalQty,
+            status,
+            userId: req.user!.userId,
           },
         });
 
