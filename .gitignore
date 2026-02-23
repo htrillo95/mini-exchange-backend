@@ -4,3 +4,6 @@ dist
 *.log
 
 /src/generated/prisma
+
+# dependencies
+node_modules/
