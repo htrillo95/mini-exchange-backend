@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import http from "http";
-import orderRoutes from "./routes/orders";
+import orderRoutes from "./routes/orders.js";
 
 dotenv.config();
 const app = express();

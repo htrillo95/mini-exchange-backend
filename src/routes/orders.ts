@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { processOrder, trades, orderBook } from "../services/matchingEngine";
-import { prisma } from "../db";
+import { processOrder, trades, orderBook } from "../services/matchingEngine.js";
+import { prisma } from "../db.js";
 
 const router = Router();
 
