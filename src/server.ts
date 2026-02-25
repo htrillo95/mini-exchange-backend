@@ -3,7 +3,9 @@ import cors from "cors";
 import dotenv from "dotenv";
 import http from "http";
 import orderRoutes from "./routes/orders.js";
-import authRoutes from "./routes/auth";
+import authRoutes from "./routes/auth.js";
+import demoRoutes from "./routes/demo.js";
+import { initializeWebSocket } from "./services/websocket.js";
 
 dotenv.config();
 const app = express();
@@ -48,11 +50,16 @@ app.use(express.json());
 
 app.use("/api/orders", orderRoutes);
 
+app.use("/api/demo", demoRoutes);
+
 app.use("/auth", authRoutes);
 
 // Create HTTP server (WebSocket-ready)
 const PORT = Number(process.env.PORT) || 4000;
 const server = http.createServer(app);
+
+// Initialize WebSocket server
+initializeWebSocket(server);
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(` Server running on port ${PORT}`);

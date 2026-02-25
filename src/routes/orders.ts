@@ -2,6 +2,7 @@ import { Router } from "express";
 import { processOrder, trades, orderBook } from "../services/matchingEngine.js";
 import { prisma } from "../db.js";
 import { requireAuth, AuthRequest } from "../middleware/authMiddleware.js";
+import { broadcast, getClientCount } from "../services/websocket.js";
 
 const router = Router();
 
@@ -113,6 +114,17 @@ router.post("/demo", async (req, res) => {
         }
       });
 
+      // Broadcast market update after successful transaction
+      const dbTrades = await prisma.trade.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      });
+      broadcast({
+        type: "market_update",
+        book: orderBook,
+        trades: dbTrades,
+      });
+
       return res.json({
         success: true,
         order: { ...order, originalQuantity: originalQty, quantity: finalQty, status },
@@ -204,6 +216,17 @@ router.post("/", requireAuth, async (req: AuthRequest, res) => {
         }
       });
 
+      // Broadcast market update after successful transaction
+      const dbTrades = await prisma.trade.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      });
+      broadcast({
+        type: "market_update",
+        book: orderBook,
+        trades: dbTrades,
+      });
+
       return res.json({
         success: true,
         order: { ...order, originalQuantity: originalQty, quantity: finalQty, status },
@@ -219,6 +242,11 @@ router.post("/", requireAuth, async (req: AuthRequest, res) => {
 
 router.get("/", (_req, res) => {
   res.json({ message: "Orders API endpoint is working" });
+});
+
+// WebSocket status endpoint (debug)
+router.get("/ws-status", (_req, res) => {
+  res.json({ clients: getClientCount() });
 });
 
 router.get("/trades", (_req, res) => {
@@ -360,6 +388,17 @@ router.delete("/:id", requireAuth, async (req: AuthRequest, res) => {
     if (updated.count === 0) {
       return res.status(404).json({ success: false, message: "Order not found", id });
     }
+
+    // Broadcast market update after successful cancellation
+    const dbTrades = await prisma.trade.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+    broadcast({
+      type: "market_update",
+      book: orderBook,
+      trades: dbTrades,
+    });
 
     return res.json({ success: true, message: "Order canceled", id });
   });
