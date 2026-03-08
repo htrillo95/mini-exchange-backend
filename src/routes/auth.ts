@@ -1,11 +1,11 @@
 import { Router } from "express";
-import { prisma } from "../db";
+import { prisma } from "../db.js";
 import {
   hashPassword,
   comparePassword,
   signToken,
-} from "../utils/auth";
-import { requireAuth, AuthRequest } from "../middleware/authMiddleware";
+} from "../utils/auth.js";
+import { requireAuth, AuthRequest } from "../middleware/authMiddleware.js";
 
 const router = Router();
 
