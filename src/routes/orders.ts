@@ -359,10 +359,10 @@ router.get("/by-ids", requireAuth, async (req: AuthRequest, res) => {
 
 router.delete("/:id", requireAuth, async (req: AuthRequest, res) => {
   return withLock(async () => {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const existing = await prisma.order.findFirst({
-      where: { id, userId: req.user!.userId },
+      where: { id: id as string, userId: req.user!.userId }
     });
 
     if (!existing) {
@@ -381,7 +381,7 @@ router.delete("/:id", requireAuth, async (req: AuthRequest, res) => {
     if (sellIndex !== -1) orderBook.sell.splice(sellIndex, 1);
 
     const updated = await prisma.order.updateMany({
-      where: { id, userId: req.user!.userId },
+      where: { id: id as string, userId: req.user!.userId },
       data: { status: "CANCELED", quantity: 0 },
     });
 
