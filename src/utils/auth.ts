@@ -17,7 +17,7 @@ export async function comparePassword(password: string, hash: string) {
 }
 
 export function signToken(payload: { userId: string; email: string }) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN as jwt.SignOptions["expiresIn"] });
 }
 
 export function verifyToken(token: string) {
