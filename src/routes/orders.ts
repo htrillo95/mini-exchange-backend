@@ -3,6 +3,7 @@ import { processOrder, trades, orderBook } from "../services/matchingEngine.js";
 import { prisma } from "../db.js";
 import { requireAuth, AuthRequest } from "../middleware/authMiddleware.js";
 import { broadcast, getClientCount } from "../services/websocket.js";
+import { applyTradeAccounting } from "../services/portfolioAccounting.js";
 
 const router = Router();
 
@@ -111,6 +112,8 @@ router.post("/demo", async (req, res) => {
             where: { id: t.sellOrderId },
             data: { quantity: sellRemaining, status: matchedStatus(sellRemaining) },
           });
+
+          await applyTradeAccounting(tx, t);
         }
       });
 
@@ -166,6 +169,21 @@ router.post("/", requireAuth, async (req: AuthRequest, res) => {
         });
       }
 
+      // Prevent selling more than owned (paper position)
+      if (order.type === "sell") {
+        const position = await (prisma as unknown as { position: { findFirst: (args: object) => Promise<{ quantity: number } | null> } }).position.findFirst({
+          where: { userId: req.user!.userId, symbol: "DEMO" },
+          select: { quantity: true },
+        });
+        const owned = position?.quantity ?? 0;
+        if (order.quantity > owned) {
+          return res.status(400).json({
+            error: "Insufficient position to sell",
+            owned: Number(owned),
+          });
+        }
+      }
+
       const originalQty = order.quantity;
       const tradesBefore = trades.length;
 
@@ -213,6 +231,8 @@ router.post("/", requireAuth, async (req: AuthRequest, res) => {
             where: { id: t.sellOrderId },
             data: { quantity: sellRemaining, status: matchedStatus(sellRemaining) },
           });
+
+          await applyTradeAccounting(tx, t);
         }
       });
 
@@ -373,6 +393,12 @@ router.delete("/:id", requireAuth, async (req: AuthRequest, res) => {
       return res
         .status(400)
         .json({ success: false, message: "Cannot cancel a FILLED order", id });
+    }
+
+    if (existing.status === "CANCELED") {
+      return res
+        .status(400)
+        .json({ success: false, message: "Order is already canceled", id });
     }
 
     const buyIndex = orderBook.buy.findIndex((o) => o.id === id);

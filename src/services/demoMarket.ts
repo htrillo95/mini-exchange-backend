@@ -1,6 +1,7 @@
 import { processOrder, trades, orderBook } from "./matchingEngine.js";
 import { prisma } from "../db.js";
 import { broadcast } from "./websocket.js";
+import { applyTradeAccounting } from "./portfolioAccounting.js";
 
 type Order = {
   id: string;
@@ -72,27 +73,41 @@ function getBestBidAsk(): { bestBid: number | null; bestAsk: number | null } {
 }
 
 /**
- * Generate a synthetic order with realistic volatility and marketable bias
+ * Generate a synthetic order with balanced liquidity and realistic pricing.
+ * - Balanced order types with dynamic liquidity correction
+ * - Prices near last trade / midpoint so orders can match
+ * - Occasional aggressive orders to trigger fills
  */
 async function generateDemoOrder(): Promise<Order> {
-  const midpoint = await getMarketMidpoint();
+  const lastPrice = await getMarketMidpoint();
   const { bestBid, bestAsk } = getBestBidAsk();
-  const type = Math.random() > 0.5 ? "buy" : "sell";
+  const buyDepth = orderBook.buy.length;
+  const sellDepth = orderBook.sell.length;
 
-  // Price jitter: ±2-4% normally, 10% chance of ±8% spike
-  const isSpike = Math.random() < 0.1;
-  const jitterRange = isSpike ? 0.08 : 0.02 + Math.random() * 0.02; // 2-4% or 8%
-  const jitter = (Math.random() - 0.5) * 2 * jitterRange * midpoint;
-  let price = Math.max(0.01, midpoint + jitter);
+  // 1. Balanced order types with dynamic liquidity balancing
+  let type: "buy" | "sell";
+  if (buyDepth > sellDepth * 1.5) {
+    type = "sell";
+  } else if (sellDepth > buyDepth * 1.5) {
+    type = "buy";
+  } else {
+    type = Math.random() < 0.5 ? "buy" : "sell";
+  }
 
-  // Bias orders to be marketable (70% chance to price aggressively)
-  if (Math.random() < 0.7) {
+  // 2. Price placement near market (so orders can match)
+  const priceDrift = (Math.random() - 0.5) * 0.3;
+  let price = Math.max(0.5, lastPrice + priceDrift);
+
+  // 3. Occasional aggressive orders to trigger fills (cross the spread)
+  if (Math.random() < 0.15) {
     if (type === "buy" && bestAsk !== null) {
-      // Price buy order at or above best ask to match
-      price = Math.max(price, bestAsk);
+      price = bestAsk + Math.random() * 0.1;
     } else if (type === "sell" && bestBid !== null) {
-      // Price sell order at or below best bid to match
-      price = Math.min(price, bestBid);
+      price = Math.max(0.5, bestBid - Math.random() * 0.1);
+    } else if (type === "buy") {
+      price = lastPrice + Math.random() * 0.1;
+    } else {
+      price = Math.max(0.5, lastPrice - Math.random() * 0.1);
     }
   }
 
@@ -157,6 +172,8 @@ async function processDemoOrder(order: Order): Promise<void> {
           where: { id: t.sellOrderId },
           data: { quantity: sellRemaining, status: matchedStatus(sellRemaining) },
         });
+
+        await applyTradeAccounting(tx, t);
       }
     });
 
