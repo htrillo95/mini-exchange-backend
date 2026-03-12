@@ -199,13 +199,13 @@ async function executeBurst(): Promise<void> {
 
   inBurst = true;
   lastBurstTime = now;
-  const burstCount = 3 + Math.floor(Math.random() * 3); // 3-5 orders
+  const burstCount = 5 + Math.floor(Math.random() * 6); // 5-10 orders
 
   for (let i = 0; i < burstCount; i++) {
     await demoMarketTick();
     if (i < burstCount - 1) {
-      // Wait 150-300ms between burst orders
-      const delay = 150 + Math.random() * 150;
+      // Wait 50-120ms between burst orders
+      const delay = 50 + Math.random() * 70;
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
@@ -224,14 +224,14 @@ function scheduleNextTick(): void {
   if (!inBurst && Math.random() < 0.15) {
     executeBurst().then(() => {
       // After burst, schedule next normal tick
-      const intervalMs = 2000 + Math.random() * 2000; // 2000-4000ms
+      const intervalMs = 200 + Math.random() * 300; // 200-500ms
       intervalRef = setTimeout(() => {
         demoMarketTick().then(() => scheduleNextTick());
       }, intervalMs);
     });
   } else {
-    // Normal tick with random interval (reduced frequency)
-    const intervalMs = 2000 + Math.random() * 2000; // 2000-4000ms
+    // Normal tick with random interval
+    const intervalMs = 200 + Math.random() * 300; // 200-500ms
     intervalRef = setTimeout(() => {
       demoMarketTick().then(() => scheduleNextTick());
     }, intervalMs);
