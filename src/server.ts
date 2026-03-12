@@ -5,6 +5,7 @@ import http from "http";
 import orderRoutes from "./routes/orders.js";
 import authRoutes from "./routes/auth.js";
 import demoRoutes from "./routes/demo.js";
+import accountRoutes from "./routes/account.js";
 import { initializeWebSocket } from "./services/websocket.js";
 
 dotenv.config();
@@ -51,6 +52,8 @@ app.use(express.json());
 app.use("/api/orders", orderRoutes);
 
 app.use("/api/demo", demoRoutes);
+
+app.use("/api", accountRoutes);
 
 app.use("/auth", authRoutes);
 
