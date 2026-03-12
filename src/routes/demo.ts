@@ -3,18 +3,11 @@ import { startDemoMarket, stopDemoMarket, getDemoStatus } from "../services/demo
 import { requireAuth, AuthRequest } from "../middleware/authMiddleware.js";
 
 const router = Router();
-const NODE_ENV = process.env.NODE_ENV || "development";
 
 /**
- * Guard: Block demo endpoints in production OR require auth
+ * Guard: Allow demo endpoints (no production block).
  */
 function demoGuard(req: any, res: any, next: any) {
-  if (NODE_ENV === "production") {
-    return res.status(403).json({
-      error: "Demo market is disabled in production",
-    });
-  }
-  // In development, allow without auth (or you can require auth here)
   next();
 }
 
