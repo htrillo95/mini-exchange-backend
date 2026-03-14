@@ -6,6 +6,7 @@ import orderRoutes from "./routes/orders.js";
 import authRoutes from "./routes/auth.js";
 import demoRoutes from "./routes/demo.js";
 import accountRoutes from "./routes/account.js";
+import marketRoutes from "./routes/market.js";
 import { initializeWebSocket } from "./services/websocket.js";
 
 dotenv.config();
@@ -54,6 +55,8 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/demo", demoRoutes);
 
 app.use("/api", accountRoutes);
+
+app.use("/api/market", marketRoutes);
 
 app.use("/auth", authRoutes);
 
