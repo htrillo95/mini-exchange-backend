@@ -73,9 +73,9 @@ function getBestBidAsk(): { bestBid: number | null; bestAsk: number | null } {
 }
 
 /**
- * Generate a synthetic order with balanced liquidity and realistic pricing.
- * - Balanced order types with dynamic liquidity correction
- * - Prices near last trade / midpoint so orders can match
+ * Generate a synthetic order with balanced liquidity and a volatility-based price model.
+ * - Most moves small, occasional spikes, mild mean reversion toward rolling average
+ * - Volume correlates with price movement
  * - Occasional aggressive orders to trigger fills
  */
 async function generateDemoOrder(): Promise<Order> {
@@ -94,11 +94,36 @@ async function generateDemoOrder(): Promise<Order> {
     type = Math.random() < 0.5 ? "buy" : "sell";
   }
 
-  // 2. Price placement near market (so orders can match)
-  const priceDrift = (Math.random() - 0.5) * 0.3;
-  let price = Math.max(0.5, lastPrice + priceDrift);
+  // 2. Volatility model: small drift + variable volatility
+  const drift = (Math.random() - 0.5) * 0.01;
+  const volatility =
+    Math.random() < 0.1
+      ? (Math.random() - 0.5) * 0.15
+      : (Math.random() - 0.5) * 0.03;
 
-  // 3. Occasional aggressive orders to trigger fills (cross the spread)
+  let price = lastPrice + drift + volatility;
+
+  // 3. Occasional larger spikes
+  if (Math.random() < 0.03) {
+    price += (Math.random() - 0.5) * 0.5;
+  }
+
+  // 4. Mild mean reversion so price doesn't drift infinitely
+  price = price + 0.08 * (lastPrice - price);
+
+  // 5. Clamp price within a reasonable band around the previous price
+  const band = Math.max(lastPrice * 0.5, 2);
+  price = Math.min(price, lastPrice + band);
+  price = Math.max(price, lastPrice - band);
+  price = Math.max(price, 0.5);
+
+  // 6. Order volume correlates with volatility; clamp 1–50
+  const baseVolume = Math.floor(Math.random() * 10) + 1;
+  const moveStrength = Math.abs(volatility) * 40;
+  let quantity = baseVolume + Math.floor(moveStrength);
+  quantity = Math.max(1, Math.min(50, quantity));
+
+  // 7. Occasional aggressive orders to trigger fills (cross the spread)
   if (Math.random() < 0.15) {
     if (type === "buy" && bestAsk !== null) {
       price = bestAsk + Math.random() * 0.1;
@@ -110,8 +135,6 @@ async function generateDemoOrder(): Promise<Order> {
       price = Math.max(0.5, lastPrice - Math.random() * 0.1);
     }
   }
-
-  const quantity = Math.floor(Math.random() * 8) + 1; // 1-8
 
   return {
     id: `demo_${Math.random().toString(36).substring(2, 9)}`,
