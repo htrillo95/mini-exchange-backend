@@ -29,9 +29,11 @@ const findRemainingQtyInBook = (id: string) => {
 let intervalRef: NodeJS.Timeout | null = null;
 let cleanupRef: NodeJS.Timeout | null = null;
 let isRunning = false;
-let inBurst = false;
-let lastBurstTime = 0;
-const BURST_COOLDOWN_MS = 30000; // 30 seconds minimum between bursts
+
+/** Steady cadence: evenly spaced ticks (no burst clustering). */
+const DEMO_TICK_MS = 120;
+
+let demoDiagnosticsTick = 0;
 
 // Simple in-process serialization (same pattern as orders.ts)
 let queue: Promise<unknown> = Promise.resolve();
@@ -73,10 +75,50 @@ function getBestBidAsk(): { bestBid: number | null; bestAsk: number | null } {
 }
 
 /**
- * Generate a synthetic order with balanced liquidity and a volatility-based price model.
- * - Most moves small, occasional spikes, mild mean reversion toward rolling average
- * - Volume correlates with price movement
- * - Occasional aggressive orders to trigger fills
+ * Periodic diagnostics: trade price diversity + synthetic 5s candle buckets (debug only).
+ */
+async function logMarketDiagnostics(): Promise<void> {
+  try {
+    const bucketMs = 5000;
+    const recent = await prisma.trade.findMany({
+      orderBy: { createdAt: "asc" },
+      take: 200,
+    });
+    const last50 = recent.slice(-50);
+    const prices = last50.map((t) => t.price);
+    const unique = new Set(prices.map((p) => Math.round(p * 100) / 100)).size;
+    console.log(
+      `[DEMO diagnostics] last ${prices.length} trade prices, ${unique} unique:`,
+      prices.join(", ")
+    );
+
+    const buckets = new Map<number, number[]>();
+    for (const t of recent) {
+      const ts = t.createdAt.getTime();
+      const bt = Math.floor(ts / bucketMs) * bucketMs;
+      const bucketSec = Math.floor(bt / 1000);
+      if (!buckets.has(bucketSec)) buckets.set(bucketSec, []);
+      buckets.get(bucketSec)!.push(t.price);
+    }
+    const last10Candles = Array.from(buckets.entries())
+      .sort((a, b) => a[0] - b[0])
+      .slice(-10)
+      .map(([time, p]) => ({
+        time,
+        open: p[0],
+        high: Math.max(...p),
+        low: Math.min(...p),
+        close: p[p.length - 1],
+        tradesInBucket: p.length,
+      }));
+    console.log("[DEMO diagnostics] last 10 x 5s buckets:", JSON.stringify(last10Candles));
+  } catch (e) {
+    console.error("[DEMO diagnostics] error:", e);
+  }
+}
+
+/**
+ * Generate a synthetic order: continuous small steps from lastPrice, granular intra-candle movement.
  */
 async function generateDemoOrder(): Promise<Order> {
   const lastPrice = await getMarketMidpoint();
@@ -84,7 +126,6 @@ async function generateDemoOrder(): Promise<Order> {
   const buyDepth = orderBook.buy.length;
   const sellDepth = orderBook.sell.length;
 
-  // 1. Balanced order types with dynamic liquidity balancing
   let type: "buy" | "sell";
   if (buyDepth > sellDepth * 1.5) {
     type = "sell";
@@ -94,52 +135,49 @@ async function generateDemoOrder(): Promise<Order> {
     type = Math.random() < 0.5 ? "buy" : "sell";
   }
 
-  // 2. Volatility model: small drift + variable volatility
-  const drift = (Math.random() - 0.5) * 0.01;
-  const volatility =
-    Math.random() < 0.1
-      ? (Math.random() - 0.5) * 0.15
-      : (Math.random() - 0.5) * 0.03;
+  const drift = (Math.random() - 0.5) * lastPrice * 0.006;
+  const jitter = lastPrice * ((Math.random() - 0.5) * 0.01);
+  let price = lastPrice + drift + jitter;
 
-  let price = lastPrice + drift + volatility;
+  const depthSkew = (Math.random() - 0.5) * lastPrice * 0.008;
+  price += depthSkew;
 
-  // 3. Occasional larger spikes
-  if (Math.random() < 0.03) {
-    price += (Math.random() - 0.5) * 0.5;
-  }
+  price = price + 0.02 * (lastPrice - price);
 
-  // 4. Mild mean reversion so price doesn't drift infinitely
-  price = price + 0.08 * (lastPrice - price);
-
-  // 5. Clamp price within a reasonable band around the previous price
-  const band = Math.max(lastPrice * 0.5, 2);
-  price = Math.min(price, lastPrice + band);
-  price = Math.max(price, lastPrice - band);
-  price = Math.max(price, 0.5);
-
-  // 6. Order volume correlates with volatility; clamp 1–50
-  const baseVolume = Math.floor(Math.random() * 10) + 1;
-  const moveStrength = Math.abs(volatility) * 40;
-  let quantity = baseVolume + Math.floor(moveStrength);
+  const baseVolume = Math.floor(Math.random() * 8) + 1;
+  const wobble = Math.abs(drift) + Math.abs(jitter);
+  let quantity = baseVolume + Math.floor((wobble / Math.max(lastPrice, 0.01)) * 30);
   quantity = Math.max(1, Math.min(50, quantity));
 
-  // 7. Occasional aggressive orders to trigger fills (cross the spread)
-  if (Math.random() < 0.15) {
+  const impactFactor = 0.002;
+  price += type === "buy" ? quantity * impactFactor : -quantity * impactFactor;
+
+  const bandClamp = Math.max(lastPrice * 0.06, 0.35);
+  price = Math.min(price, lastPrice + bandClamp);
+  price = Math.max(price, lastPrice - bandClamp);
+  price = Math.max(price, 0.5);
+
+  if (Math.random() < 0.55) {
     if (type === "buy" && bestAsk !== null) {
-      price = bestAsk + Math.random() * 0.1;
+      price = bestAsk + Math.random() * 0.06;
     } else if (type === "sell" && bestBid !== null) {
-      price = Math.max(0.5, bestBid - Math.random() * 0.1);
+      price = Math.max(0.5, bestBid - Math.random() * 0.06);
     } else if (type === "buy") {
-      price = lastPrice + Math.random() * 0.1;
+      price = lastPrice + Math.random() * lastPrice * 0.008;
     } else {
-      price = Math.max(0.5, lastPrice - Math.random() * 0.1);
+      price = Math.max(0.5, lastPrice - Math.random() * lastPrice * 0.008);
     }
+    price = Math.min(price, lastPrice + bandClamp);
+    price = Math.max(price, lastPrice - bandClamp);
+    price = Math.max(price, 0.5);
   }
+
+  price += (Math.random() - 0.5) * 0.02;
 
   return {
     id: `demo_${Math.random().toString(36).substring(2, 9)}`,
     type,
-    price: Math.round(price * 100) / 100, // Round to 2 decimals
+    price: Math.round(price * 100) / 100,
     quantity,
   };
 }
@@ -221,61 +259,24 @@ async function demoMarketTick(): Promise<void> {
     const order = await generateDemoOrder();
     await processDemoOrder(order);
     console.log(`[DEMO] Generated ${order.type} order: ${order.quantity} @ $${order.price}`);
+    demoDiagnosticsTick += 1;
+    if (demoDiagnosticsTick % 25 === 0) {
+      await logMarketDiagnostics();
+    }
   } catch (error) {
     console.error("[DEMO] Error in market tick:", error);
   }
 }
 
 /**
- * Execute a burst of rapid orders (3-5 orders at 150-300ms intervals)
- * Rate limited to prevent excessive DB writes
- */
-async function executeBurst(): Promise<void> {
-  const now = Date.now();
-  if (now - lastBurstTime < BURST_COOLDOWN_MS) {
-    // Rate limit: skip burst if too soon after last one
-    return;
-  }
-
-  inBurst = true;
-  lastBurstTime = now;
-  const burstCount = 5 + Math.floor(Math.random() * 6); // 5-10 orders
-
-  for (let i = 0; i < burstCount; i++) {
-    await demoMarketTick();
-    if (i < burstCount - 1) {
-      // Wait 50-120ms between burst orders
-      const delay = 50 + Math.random() * 70;
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-  }
-
-  inBurst = false;
-}
-
-/**
- * Schedule next tick with random interval (2000-4000ms) or burst behavior
- * Reduced frequency to lower DB write load
+ * One tick every DEMO_TICK_MS — continuous, even flow (no bursts).
  */
 function scheduleNextTick(): void {
   if (!isRunning) return;
 
-  // 15% chance to enter burst mode (rate limited)
-  if (!inBurst && Math.random() < 0.15) {
-    executeBurst().then(() => {
-      // After burst, schedule next normal tick
-      const intervalMs = 200 + Math.random() * 300; // 200-500ms
-      intervalRef = setTimeout(() => {
-        demoMarketTick().then(() => scheduleNextTick());
-      }, intervalMs);
-    });
-  } else {
-    // Normal tick with random interval
-    const intervalMs = 200 + Math.random() * 300; // 200-500ms
-    intervalRef = setTimeout(() => {
-      demoMarketTick().then(() => scheduleNextTick());
-    }, intervalMs);
-  }
+  intervalRef = setTimeout(() => {
+    demoMarketTick().then(() => scheduleNextTick());
+  }, DEMO_TICK_MS);
 }
 
 /**
@@ -324,8 +325,7 @@ export function startDemoMarket(): void {
   }
 
   isRunning = true;
-  inBurst = false;
-  lastBurstTime = 0;
+  demoDiagnosticsTick = 0;
 
   // Start first tick immediately
   demoMarketTick().then(() => scheduleNextTick());
@@ -360,7 +360,6 @@ export function stopDemoMarket(): void {
   }
 
   isRunning = false;
-  inBurst = false;
   console.log("[DEMO] Demo market stopped");
 }
 

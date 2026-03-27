@@ -48,12 +48,15 @@ export function processOrder(newOrder: Order) {
       const match = orderBook.sell[bestIndex];
       const tradeQty = Math.min(newOrder.quantity, match.quantity);
 
-      console.log(`[MATCH] Found match with ${match.id} — ${tradeQty} units @ $${match.price}`);
+      const execPrice =
+        Math.round(((match.price + newOrder.price) / 2) * 100) / 100;
+
+      console.log(`[MATCH] Found match with ${match.id} — ${tradeQty} units @ $${execPrice}`);
 
       const trade: Trade = {
         buyOrderId: newOrder.id,
         sellOrderId: match.id,
-        price: match.price,
+        price: execPrice,
         quantity: tradeQty,
       };
 
@@ -95,12 +98,15 @@ export function processOrder(newOrder: Order) {
       const match = orderBook.buy[bestIndex];
       const tradeQty = Math.min(newOrder.quantity, match.quantity);
 
-      console.log(`[MATCH] Found match with ${match.id} — ${tradeQty} units @ $${match.price}`);
+      const execPrice =
+        Math.round(((match.price + newOrder.price) / 2) * 100) / 100;
+
+      console.log(`[MATCH] Found match with ${match.id} — ${tradeQty} units @ $${execPrice}`);
 
       const trade: Trade = {
         buyOrderId: match.id,
         sellOrderId: newOrder.id,
-        price: newOrder.price,
+        price: execPrice,
         quantity: tradeQty,
       };
 

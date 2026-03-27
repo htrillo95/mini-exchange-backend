@@ -6,6 +6,14 @@ const router = Router();
 const ALLOWED_INTERVALS = [1, 5, 15, 60] as const;
 const DEFAULT_INTERVAL = 5;
 
+type BucketAgg = {
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
 router.get("/candles", async (req, res) => {
   const raw = req.query.interval;
   let intervalSeconds = DEFAULT_INTERVAL;
@@ -21,67 +29,53 @@ router.get("/candles", async (req, res) => {
   }
 
   const trades = await prisma.trade.findMany({
-    where: {
-      createdAt: {
-        gte: new Date(Date.now() - 10 * 60 * 1000),
-      },
-    },
     orderBy: { createdAt: "asc" },
   });
 
   const bucketMs = intervalSeconds * 1000;
-  const buckets = new Map<number, { prices: number[]; volume: number }>();
+  const buckets = new Map<number, BucketAgg>();
 
   for (const t of trades) {
     const ts = t.createdAt.getTime();
     const bucketTime = Math.floor(ts / bucketMs) * bucketMs;
-    const bucketSec = Math.floor(bucketTime / 1000);
+    const timeSec = Math.floor(bucketTime / 1000);
+    const p = t.price;
+    const q = t.quantity;
 
-    if (!buckets.has(bucketSec)) {
-      buckets.set(bucketSec, { prices: [t.price], volume: t.quantity });
+    const existing = buckets.get(timeSec);
+    if (!existing) {
+      buckets.set(timeSec, {
+        open: p,
+        high: p,
+        low: p,
+        close: p,
+        volume: q,
+      });
     } else {
-      const bucket = buckets.get(bucketSec)!;
-      bucket.prices.push(t.price);
-      bucket.volume += t.quantity;
+      if (p > existing.high) existing.high = p;
+      if (p < existing.low) existing.low = p;
+      existing.close = p;
+      existing.volume += q;
     }
   }
 
   let candles = Array.from(buckets.entries())
-    .map(([time, { prices, volume }]) => ({
+    .map(([time, agg]) => ({
       time,
-      open: prices[0],
-      high: Math.max(...prices),
-      low: Math.min(...prices),
-      close: prices[prices.length - 1],
-      volume,
+      open: agg.open,
+      high: agg.high,
+      low: agg.low,
+      close: agg.close,
+      volume: agg.volume,
     }))
     .sort((a, b) => a.time - b.time);
 
-  if (candles.length === 0) {
-    const lastTrade = await prisma.trade.findFirst({
-      orderBy: { createdAt: "desc" },
-    });
-    const nowSec = Math.floor(Date.now() / 1000);
-    if (lastTrade) {
-      candles = [{
-        time: nowSec,
-        open: lastTrade.price,
-        high: lastTrade.price,
-        low: lastTrade.price,
-        close: lastTrade.price,
-        volume: 0,
-      }];
-    } else {
-      candles = [{
-        time: nowSec,
-        open: 10,
-        high: 10,
-        low: 10,
-        close: 10,
-        volume: 0,
-      }];
-    }
+  if (candles.length > 300) {
+    candles = candles.slice(-300);
   }
+
+  const lastFive = candles.slice(-5);
+  console.log("[market/candles] last 5 candles:", JSON.stringify(lastFive));
 
   return res.json(candles);
 });
