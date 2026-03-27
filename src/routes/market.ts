@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { prisma } from "../db.js";
+import { trades } from "../services/matchingEngine.js";
 
 const router = Router();
 
@@ -27,10 +27,6 @@ router.get("/candles", async (req, res) => {
     }
     intervalSeconds = parsed;
   }
-
-  const trades = await prisma.trade.findMany({
-    orderBy: { createdAt: "asc" },
-  });
 
   const bucketMs = intervalSeconds * 1000;
   const buckets = new Map<number, BucketAgg>();

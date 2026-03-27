@@ -1,5 +1,10 @@
 import { Router } from "express";
-import { processOrder, trades, orderBook } from "../services/matchingEngine.js";
+import {
+  processOrder,
+  trades,
+  orderBook,
+  getTradesWireDescending,
+} from "../services/matchingEngine.js";
 import { prisma } from "../db.js";
 import { requireAuth, AuthRequest } from "../middleware/authMiddleware.js";
 import { broadcast, getClientCount } from "../services/websocket.js";
@@ -74,58 +79,11 @@ router.post("/demo", async (req, res) => {
       const finalQty = order.quantity;
       const status = computeStatus(originalQty, finalQty);
 
-      await prisma.$transaction(async (tx) => {
-        await tx.order.create({
-          data: {
-            id: order.id,
-            type: order.type,
-            price: order.price,
-            originalQuantity: originalQty,
-            quantity: finalQty,
-            status,
-            userId: null,
-          },
-        });
-
-        for (const t of newTrades) {
-          await tx.trade.create({
-            data: {
-              buyOrderId: t.buyOrderId,
-              sellOrderId: t.sellOrderId,
-              price: t.price,
-              quantity: t.quantity,
-            },
-          });
-
-          const buyRemaining = findRemainingQtyInBook(t.buyOrderId);
-          const sellRemaining = findRemainingQtyInBook(t.sellOrderId);
-
-          const matchedStatus = (remaining: number): OrderStatus =>
-            remaining === 0 ? "FILLED" : "PARTIAL";
-
-          await tx.order.updateMany({
-            where: { id: t.buyOrderId },
-            data: { quantity: buyRemaining, status: matchedStatus(buyRemaining) },
-          });
-
-          await tx.order.updateMany({
-            where: { id: t.sellOrderId },
-            data: { quantity: sellRemaining, status: matchedStatus(sellRemaining) },
-          });
-
-          await applyTradeAccounting(tx, t);
-        }
-      });
-
-      // Broadcast market update after successful transaction
-      const dbTrades = await prisma.trade.findMany({
-        orderBy: { createdAt: "desc" },
-        take: 50,
-      });
+      const wireTrades = getTradesWireDescending(50);
       broadcast({
         type: "market_update",
         book: orderBook,
-        trades: dbTrades,
+        trades: wireTrades,
       });
 
       return res.json({
@@ -269,8 +227,16 @@ router.get("/ws-status", (_req, res) => {
   res.json({ clients: getClientCount() });
 });
 
-router.get("/trades", (_req, res) => {
-  res.json(trades);
+router.get("/trades", (req, res) => {
+  let limit = 200;
+  const limitParam = req.query.limit;
+  if (typeof limitParam === "string") {
+    const parsed = Number(limitParam);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      limit = Math.min(parsed, 500);
+    }
+  }
+  res.json(getTradesWireDescending(limit));
 });
 
 router.get("/trades/db", async (req, res) => {
@@ -283,12 +249,22 @@ router.get("/trades/db", async (req, res) => {
     }
   }
 
-  const dbTrades = await prisma.trade.findMany({
-    orderBy: { createdAt: "desc" },
-    take: limit,
-  });
+  const authHeader = req.headers.authorization;
+  const guest = !authHeader || !authHeader.startsWith("Bearer ");
+  if (guest) {
+    return res.json(getTradesWireDescending(limit));
+  }
 
-  res.json(dbTrades);
+  try {
+    const dbTrades = await prisma.trade.findMany({
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
+    return res.json(dbTrades);
+  } catch (e) {
+    console.error("[trades/db] DB unavailable, falling back to in-memory:", e);
+    return res.json(getTradesWireDescending(limit));
+  }
 });
 
 router.get("/book", (_req, res) => {

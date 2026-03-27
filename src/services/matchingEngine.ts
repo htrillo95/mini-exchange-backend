@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 type Order = {
   id: string;
   type: "buy" | "sell";
@@ -5,16 +7,48 @@ type Order = {
   quantity: number;
 };
 
-type Trade = {
+export type Trade = {
+  id: string;
   buyOrderId: string;
   sellOrderId: string;
   price: number;
   quantity: number;
+  createdAt: Date;
 };
 
 // -- In-memory data --
 const orderBook: { buy: Order[]; sell: Order[] } = { buy: [], sell: [] };
 const trades: Trade[] = [];
+
+function nextTradeRecord(
+  buyOrderId: string,
+  sellOrderId: string,
+  price: number,
+  quantity: number
+): Trade {
+  return {
+    id: randomUUID(),
+    buyOrderId,
+    sellOrderId,
+    price,
+    quantity,
+    createdAt: new Date(),
+  };
+}
+
+/** Recent trades in API shape (newest first), for WS and /trades/db guest path. */
+export function getTradesWireDescending(limit: number) {
+  const n = Math.min(Math.max(limit, 1), 500);
+  const slice = trades.slice(-n);
+  return [...slice].reverse().map((t) => ({
+    id: t.id,
+    buyOrderId: t.buyOrderId,
+    sellOrderId: t.sellOrderId,
+    price: t.price,
+    quantity: t.quantity,
+    createdAt: t.createdAt,
+  }));
+}
 
 type OrderUpdate = {
   id: string;
@@ -53,12 +87,7 @@ export function processOrder(newOrder: Order) {
 
       console.log(`[MATCH] Found match with ${match.id} — ${tradeQty} units @ $${execPrice}`);
 
-      const trade: Trade = {
-        buyOrderId: newOrder.id,
-        sellOrderId: match.id,
-        price: execPrice,
-        quantity: tradeQty,
-      };
+      const trade = nextTradeRecord(newOrder.id, match.id, execPrice, tradeQty);
 
       trades.push(trade);
       newTrades.push(trade);
@@ -103,12 +132,7 @@ export function processOrder(newOrder: Order) {
 
       console.log(`[MATCH] Found match with ${match.id} — ${tradeQty} units @ $${execPrice}`);
 
-      const trade: Trade = {
-        buyOrderId: match.id,
-        sellOrderId: newOrder.id,
-        price: execPrice,
-        quantity: tradeQty,
-      };
+      const trade = nextTradeRecord(match.id, newOrder.id, execPrice, tradeQty);
 
       trades.push(trade);
       newTrades.push(trade);
